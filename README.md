@@ -577,6 +577,79 @@ class CreditUserOnDepositListener
 
 ---
 
+### 9. Upgrading to v1.1.0 from v1.0.x
+
+`v1.1.0` introduces enterprise-scale block event ingestion (`--strategy=block-ingest`), storage-agnostic address indexing (`AddressIndexInterface`), exact on-chain fee accounting via `TransactionReceipt`, and token-first sweeping (`--all`).
+
+Follow these steps to upgrade an existing application:
+
+#### Step 1: Update Composer Dependency
+```bash
+composer update mrokwor/blockchain-sdk-php
+```
+
+#### Step 2: Republish Configuration (`config/blockchainsdk.php`)
+`v1.1.0` introduces new configuration options for `evm_log_chunk_size`, `address_index`, and provider-agnostic `rpc_nodes`.
+
+Force republish the configuration file:
+```bash
+php artisan vendor:publish --tag="blockchainsdk-config" --force
+```
+
+> [!CAUTION]
+> If you have custom tokens, contract addresses, or custom master vaults in `config/blockchainsdk.php`, back them up first, or manually merge the new sections:
+> - `'evm_log_chunk_size' => (int) env('BLOCKCHAIN_EVM_LOG_CHUNK_SIZE', 10)`
+> - `'address_index' => [...]`
+> - Provider `.env` RPC lookups under `'rpc_nodes' => array_values(array_filter([...]))`
+
+#### Step 3: Configure Dedicated RPC Providers in `.env`
+Public community RPC nodes often block or throttle `eth_getLogs`. To use the new high-performance block ingestion engine, set your dedicated provider URL in `.env`:
+```env
+# Dedicated node providers (e.g. Alchemy, QuickNode, Infura)
+ETHEREUM_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+BSC_RPC_URL="https://bnb-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+POLYGON_RPC_URL="https://polygon-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+SOLANA_RPC_URL="https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+TRON_RPC_URL="https://api.trongrid.io"
+TRON_PRO_API_KEY="your-trongrid-api-key"
+
+# Optional: Adjust chunk size for paid/PAYG RPC plans (defaults to 10 for Alchemy Free Tier)
+BLOCKCHAIN_EVM_LOG_CHUNK_SIZE=10
+
+# Optional: Address Index Strategy ('auto', 'redis', 'database', 'array')
+BLOCKCHAIN_ADDRESS_INDEX_STRATEGY=auto
+```
+
+#### Step 4: Update Your Scheduled Commands (`routes/console.php`)
+1. **Switch to Block Ingestion**:
+   ```php
+   // Change from default per-wallet polling to block-level event ingestion:
+   Schedule::command('blockchainsdk:monitor --strategy=block-ingest')
+       ->everyMinute()
+       ->withoutOverlapping();
+   ```
+2. **Switch to Token-First Sweeping**:
+   ```php
+   // Sweeps all configured ERC-20/SPL/TRC-20 tokens first before draining native gas coin:
+   Schedule::command('blockchainsdk:sweep --all --sponsor --credit')
+       ->everyFifteenMinutes()
+       ->withoutOverlapping();
+   ```
+
+#### Step 5: (Optional) Access Exact Confirmed Fees
+If you are programmatically recording sweep fees, update your calls to use the normalized `TransactionReceipt`:
+```php
+// Old (v1.0.x):
+$fee = $result->feeSpent ?? 0;
+
+// New (v1.1.0):
+$exactFeeNative = $result->feeSpent();             // In native coin (ETH, BNB, MATIC, SOL, TRX)
+$exactFeeWei    = $result->receipt?->feeWei();     // In atomic units (Wei, Sun, Satoshis)
+$gasUsed        = $result->receipt?->gasUsed;      // Actual units of gas consumed on-chain
+```
+
+---
+
 # Part 2: Standalone / Vanilla PHP Guide (Non-Laravel)
 
 You can use `blockchain-sdk-php` in any PHP application, microservice, or framework (Symfony, Slim, Laminas, WordPress, pure PHP CLI scripts) without Laravel.

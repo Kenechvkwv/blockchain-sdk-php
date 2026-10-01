@@ -18,6 +18,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | EVM eth_getLogs Block Range Chunk Size
+    |--------------------------------------------------------------------------
+    |
+    | When running block-level event ingestion ('blockchainsdk:monitor --strategy=block-ingest'),
+    | the driver scans ERC-20 transfer logs across block ranges.
+    |
+    | Free-tier node providers (like Alchemy Free Tier) enforce a strict 10-block limit
+    | per request. The SDK automatically chunks queries into this window to avoid
+    | 'Query exceeds max block range' errors. On paid/PAYG plans, increase this
+    | in your .env (e.g. 500 - 2000) for faster single-request scanning.
+    |
+    */
+    'evm_log_chunk_size' => (int) env('BLOCKCHAIN_EVM_LOG_CHUNK_SIZE', 10),
+
+    /*
+    |--------------------------------------------------------------------------
     | Master Cold Vault Wallets (Deposit Sweep Destination)
     |--------------------------------------------------------------------------
     |
@@ -159,11 +175,12 @@ return [
             'type' => 'evm',
             'chain_id' => 1,
             'currency' => 'ETH',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('ETHEREUM_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode, Infura)
                 'https://cloudflare-eth.com',
                 'https://ethereum-rpc.publicnode.com',
                 'https://1rpc.io/eth',
-            ],
+            ])),
             'tokens' => [
                 'USDT' => ['name' => 'Tether USD', 'contract' => '0xdAC17F958D2ee523a2206206994597C13D831ec7', 'decimals' => 6, 'status' => 'enabled'],
                 'USDC' => ['name' => 'USD Coin',   'contract' => '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 'decimals' => 6, 'status' => 'enabled'],
@@ -178,11 +195,12 @@ return [
             'type' => 'evm',
             'chain_id' => 56,
             'currency' => 'BNB',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('BSC_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode, Ankr)
                 'https://bsc-dataseed.binance.org',
                 'https://bsc-dataseed1.defibit.io',
                 'https://bsc-rpc.publicnode.com',
-            ],
+            ])),
             'tokens' => [
                 'USDT' => ['name' => 'Tether USD', 'contract' => '0x55d398326f99059fF775485246999027B3197955', 'decimals' => 18, 'status' => 'enabled'],
                 'USDC' => ['name' => 'USD Coin',   'contract' => '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 'decimals' => 18, 'status' => 'enabled'],
@@ -197,11 +215,12 @@ return [
             'type' => 'evm',
             'chain_id' => 137,
             'currency' => 'POL',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('POLYGON_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode)
                 'https://polygon-rpc.com',
                 'https://polygon-bor-rpc.publicnode.com',
                 'https://1rpc.io/matic',
-            ],
+            ])),
             'tokens' => [
                 'USDT' => ['name' => 'Tether USD', 'contract' => '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 'decimals' => 6, 'status' => 'enabled'],
                 'USDC' => ['name' => 'USD Coin',   'contract' => '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 'decimals' => 6, 'status' => 'enabled'],
@@ -213,10 +232,11 @@ return [
             'type' => 'evm',
             'chain_id' => 42161,
             'currency' => 'ETH',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('ARBITRUM_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode)
                 'https://arb1.arbitrum.io/rpc',
                 'https://rpc.ankr.com/arbitrum',
-            ],
+            ])),
             'tokens' => [
                 'USDT' => ['name' => 'Tether USD', 'contract' => '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 'decimals' => 6, 'status' => 'enabled'],
                 'USDC' => ['name' => 'USD Coin',   'contract' => '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 'decimals' => 6, 'status' => 'enabled'],
@@ -228,10 +248,11 @@ return [
             'type' => 'evm',
             'chain_id' => 10,
             'currency' => 'ETH',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('OPTIMISM_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode)
                 'https://mainnet.optimism.io',
                 'https://rpc.ankr.com/optimism',
-            ],
+            ])),
             'tokens' => [
                 'USDT' => ['name' => 'Tether USD', 'contract' => '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', 'decimals' => 6, 'status' => 'enabled'],
                 'USDC' => ['name' => 'USD Coin',   'contract' => '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 'decimals' => 6, 'status' => 'enabled'],
@@ -243,11 +264,12 @@ return [
             'type' => 'evm',
             'chain_id' => 8453,
             'currency' => 'ETH',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('BASE_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode)
                 'https://mainnet.base.org',
                 'https://base-rpc.publicnode.com',
                 'https://1rpc.io/base',
-            ],
+            ])),
             'tokens' => [
                 'USDC' => ['name' => 'USD Coin',   'contract' => '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 'decimals' => 6, 'status' => 'enabled'],
                 'USDT' => ['name' => 'Tether USD', 'contract' => '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', 'decimals' => 6, 'status' => 'enabled'],
@@ -346,10 +368,11 @@ return [
         'solana' => [
             'type' => 'solana',
             'currency' => 'SOL',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('SOLANA_RPC_URL'), // Dedicated provider URL (e.g. Alchemy, QuickNode, Helius)
                 'https://api.mainnet-beta.solana.com',
                 'https://solana-rpc.publicnode.com',
-            ],
+            ])),
             'tokens' => [
                 'USDC' => ['name' => 'USD Coin', 'contract' => 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'decimals' => 6, 'status' => 'enabled'],
                 'USDT' => ['name' => 'Tether USD', 'contract' => 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', 'decimals' => 6, 'status' => 'enabled'],
@@ -362,11 +385,11 @@ return [
         'tron' => [
             'type' => 'tron',
             'currency' => 'TRX',
-            'rpc_nodes' => [
-                'https://api.trongrid.io',
+            'rpc_nodes' => array_values(array_filter([
+                env('TRON_RPC_URL', 'https://api.trongrid.io'), // Dedicated provider URL (e.g. TronGrid, Alchemy)
                 'https://api.tronstack.io',
-            ],
-            'api_key' => env('TRON_PRO_API_KEY'),
+            ])),
+            'api_key' => env('TRON_PRO_API_KEY'), // TronGrid API Key if using TronGrid
             'tokens' => [
                 'USDT' => ['name' => 'Tether USD', 'contract' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'decimals' => 6, 'status' => 'enabled'],
                 'USDC' => ['name' => 'USD Coin',   'contract' => 'TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8', 'decimals' => 6, 'status' => 'enabled'],
@@ -377,10 +400,11 @@ return [
         'bitcoin' => [
             'type' => 'bitcoin',
             'currency' => 'BTC',
-            'rpc_nodes' => [
+            'rpc_nodes' => array_values(array_filter([
+                env('BITCOIN_RPC_URL'), // Dedicated provider URL (e.g. Blockstream, Mempool, QuickNode)
                 'https://blockstream.info/api',
                 'https://mempool.space/api',
-            ],
+            ])),
             'tokens' => [],
         ],
     ],
@@ -401,7 +425,7 @@ return [
     |
     */
     'address_index' => [
-        'strategy' => env('BLOCKCHAIN_ADDRESS_INDEX', 'auto'),
+        'strategy' => env('BLOCKCHAIN_ADDRESS_INDEX_STRATEGY', env('BLOCKCHAIN_ADDRESS_INDEX', 'auto')),
         'table' => 'blockchain_sdk_wallets',
         'address_column' => 'address',
         'id_column' => 'id',
