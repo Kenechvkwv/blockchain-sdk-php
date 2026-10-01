@@ -14,12 +14,13 @@ class BlockchainAddress implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (!is_string($value) || empty(trim($value))) {
+        if (! is_string($value) || empty(trim($value))) {
             $fail("The {$attribute} must be a valid string.");
+
             return;
         }
 
-        if (!Blockchain::validateAddress($this->network, trim($value))) {
+        if (! Blockchain::validateAddress($this->network, trim($value))) {
             $networkName = ucfirst($this->network);
             $fail("The {$attribute} is not a valid {$networkName} blockchain address.");
         }

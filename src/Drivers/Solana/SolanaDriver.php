@@ -4,21 +4,25 @@ namespace BlockchainSdk\Drivers\Solana;
 
 use BlockchainSdk\Contracts\NetworkDriverInterface;
 use BlockchainSdk\Crypto\Base58;
+use BlockchainSdk\Crypto\Decimal;
 use BlockchainSdk\DTOs\Keypair;
 use BlockchainSdk\DTOs\TokenBalance;
+use BlockchainSdk\DTOs\TransactionReceipt;
 use BlockchainSdk\DTOs\TransactionResult;
 use BlockchainSdk\Http\RpcClient;
 
 class SolanaDriver implements NetworkDriverInterface
 {
     private SolanaWalletGenerator $generator;
+
     private SolanaTransactionSigner $signer;
+
     private RpcClient $rpc;
 
     public function __construct(array $config)
     {
-        $this->generator = new SolanaWalletGenerator();
-        $this->signer = new SolanaTransactionSigner();
+        $this->generator = new SolanaWalletGenerator;
+        $this->signer = new SolanaTransactionSigner;
         $this->rpc = new RpcClient(
             $config['rpc_nodes'] ?? ['https://api.mainnet-beta.solana.com', 'https://solana-mainnet.rpc.extrnode.com'],
             10,
@@ -34,12 +38,13 @@ class SolanaDriver implements NetworkDriverInterface
 
     public function validateAddress(string $address): bool
     {
-        if (!preg_match('/^[1-9A-HJ-NP-Za-km-z]{32,44}$/', $address)) {
+        if (! preg_match('/^[1-9A-HJ-NP-Za-km-z]{32,44}$/', $address)) {
             return false;
         }
 
         try {
             $bytes = Base58::decode($address);
+
             return strlen($bytes) === 32;
         } catch (\Throwable $e) {
             return false;
@@ -55,27 +60,28 @@ class SolanaDriver implements NetworkDriverInterface
                 $res = $this->rpc->call('getTokenAccountsByOwner', [
                     $address,
                     ['mint' => $tokenContract],
-                    ['encoding' => 'jsonParsed']
+                    ['encoding' => 'jsonParsed'],
                 ]);
                 $accounts = $res['result']['value'] ?? [];
-                if (!empty($accounts)) {
+                if (! empty($accounts)) {
                     $info = $accounts[0]['account']['data']['parsed']['info']['tokenAmount'];
-                    $amountRaw = (string)$info['amount'];
-                    $decimals = (int)$info['decimals'];
+                    $amountRaw = (string) $info['amount'];
+                    $decimals = (int) $info['decimals'];
                 }
             } catch (\Throwable $e) {
                 // Default to 0 balance if no token account found
             }
+
             return new TokenBalance(
                 symbol: 'SPL',
                 balanceRaw: $amountRaw,
-                balanceFormatted: bcdiv($amountRaw, bcpow('10', (string)$decimals), min($decimals, 6)),
+                balanceFormatted: bcdiv($amountRaw, bcpow('10', (string) $decimals), min($decimals, 6)),
                 decimals: $decimals
             );
         }
 
         $res = $this->rpc->call('getBalance', [$address]);
-        $lamports = (string)($res['result']['value'] ?? 0);
+        $lamports = (string) ($res['result']['value'] ?? 0);
 
         return new TokenBalance(
             symbol: 'SOL',
@@ -89,21 +95,21 @@ class SolanaDriver implements NetworkDriverInterface
     {
         $fromPrivateKey = $params['from_private_key'] ?? $params['private_key'] ?? '';
         if (empty($fromPrivateKey)) {
-            return new TransactionResult(false, null, null, "Private key is required for Solana transaction.");
+            return new TransactionResult(false, null, null, 'Private key is required for Solana transaction.');
         }
 
         $fromAddress = $this->generator->privateKeyToAddress($fromPrivateKey);
         $params['from_private_key'] = $fromPrivateKey;
-        $params['private_key']      = $fromPrivateKey;
-        $params['from_address']     = $fromAddress;
-        $params['to_address']       = $params['to'];
+        $params['private_key'] = $fromPrivateKey;
+        $params['from_address'] = $fromAddress;
+        $params['to_address'] = $params['to'];
 
         // Token vs Native lamports calculation
         if (empty($params['token_contract'])) {
-            $params['lamports'] = (int)($params['lamports'] ?? \BlockchainSdk\Crypto\Decimal::toBaseUnit($params['amount'] ?? '0', 9));
+            $params['lamports'] = (int) ($params['lamports'] ?? Decimal::toBaseUnit($params['amount'] ?? '0', 9));
         } else {
-            $decimals = (int)($params['decimals'] ?? 6);
-            $params['amount_raw'] = (string)($params['amount_raw'] ?? \BlockchainSdk\Crypto\Decimal::toBaseUnit($params['amount'] ?? '0', $decimals));
+            $decimals = (int) ($params['decimals'] ?? 6);
+            $params['amount_raw'] = (string) ($params['amount_raw'] ?? Decimal::toBaseUnit($params['amount'] ?? '0', $decimals));
         }
 
         // Fetch and validate 32-byte blockhash from RPC
@@ -111,12 +117,13 @@ class SolanaDriver implements NetworkDriverInterface
         $recentBlockhash = $blockhashRes['result']['value']['blockhash'] ?? '';
 
         if (empty($recentBlockhash) || strlen(Base58::decode($recentBlockhash)) !== 32) {
-            return new TransactionResult(false, null, null, "Failed to retrieve valid 32-byte recentBlockhash from Solana RPC.");
+            return new TransactionResult(false, null, null, 'Failed to retrieve valid 32-byte recentBlockhash from Solana RPC.');
         }
 
         $params['recent_blockhash'] = $recentBlockhash;
 
         $signedBase64 = $this->signer->signTransaction($params);
+
         return $this->broadcastRawTransaction($signedBase64);
     }
 
@@ -127,6 +134,7 @@ class SolanaDriver implements NetworkDriverInterface
 
         if ($tokenContract) {
             $sweepAmount = $amount ?? $balance->balanceRaw;
+
             return $this->sendTransaction([
                 'from_private_key' => $fromPrivateKey,
                 'to' => $toAddress,
@@ -137,10 +145,10 @@ class SolanaDriver implements NetworkDriverInterface
         }
 
         $feeLamports = 5000;
-        $sweepableLamports = (int)$balance->balanceRaw - $feeLamports;
+        $sweepableLamports = (int) $balance->balanceRaw - $feeLamports;
 
         if ($sweepableLamports <= 0) {
-            return new TransactionResult(false, null, null, "Insufficient SOL balance for rent/network fees.");
+            return new TransactionResult(false, null, null, 'Insufficient SOL balance for rent/network fees.');
         }
 
         return $this->sendTransaction([
@@ -161,14 +169,15 @@ class SolanaDriver implements NetworkDriverInterface
         $currentLamports = $this->getBalance($subWalletAddress)->balanceRaw;
 
         if (bccomp($currentLamports, $requiredLamports) >= 0) {
-            return new TransactionResult(true, null, null, "Sub-wallet already has sufficient SOL fee balance.");
+            return new TransactionResult(true, null, null, 'Sub-wallet already has sufficient SOL fee balance.');
         }
 
         $deficit = bcsub($requiredLamports, $currentLamports);
+
         return $this->sendTransaction([
             'from_private_key' => $masterGasPrivateKey,
-            'to'               => $subWalletAddress,
-            'lamports'         => (int)$deficit + 5000,
+            'to' => $subWalletAddress,
+            'lamports' => (int) $deficit + 5000,
         ]);
     }
 
@@ -176,8 +185,8 @@ class SolanaDriver implements NetworkDriverInterface
     {
         $fromAddress = $this->generator->privateKeyToAddress($subWalletPrivateKey);
         $fuelResult = $this->fuelSubWallet($masterGasPrivateKey, $fromAddress, $tokenContract);
-        if (!$fuelResult->success && empty($fuelResult->txHash)) {
-            return new TransactionResult(false, null, null, "Failed to sponsor SOL gas: " . ($fuelResult->errorMessage ?? 'Unknown error'));
+        if (! $fuelResult->success && empty($fuelResult->txHash)) {
+            return new TransactionResult(false, null, null, 'Failed to sponsor SOL gas: '.($fuelResult->errorMessage ?? 'Unknown error'));
         }
 
         return $this->sweep($subWalletPrivateKey, $toVaultAddress, $tokenContract, $amount);
@@ -188,11 +197,12 @@ class SolanaDriver implements NetworkDriverInterface
         try {
             $res = $this->rpc->call('sendTransaction', [
                 $signedRawTx,
-                ['encoding' => 'base64', 'preflightCommitment' => 'confirmed']
+                ['encoding' => 'base64', 'preflightCommitment' => 'confirmed'],
             ]);
             $txHash = $res['result'] ?? null;
+
             return new TransactionResult(
-                success: !empty($txHash),
+                success: ! empty($txHash),
                 txHash: $txHash,
                 rawSignedHex: $signedRawTx
             );
@@ -206,11 +216,56 @@ class SolanaDriver implements NetworkDriverInterface
         try {
             $res = $this->rpc->call('getSignaturesForAddress', [$address, ['limit' => 5]]);
             $signatures = $res['result'] ?? [];
-            if (!empty($signatures[0]['signature'])) {
+            if (! empty($signatures[0]['signature'])) {
                 return $signatures[0]['signature'];
             }
         } catch (\Throwable $e) {
             // Silently fallback
+        }
+
+        return null;
+    }
+
+    public function getTransactionReceipt(string $txHash): ?TransactionReceipt
+    {
+        try {
+            $res = $this->rpc->call('getTransaction', [
+                $txHash,
+                ['encoding' => 'jsonParsed', 'maxSupportedTransactionVersion' => 0],
+            ]);
+            if (! empty($res['result'])) {
+                $result = $res['result'];
+                $meta = $result['meta'] ?? [];
+                $feeLamports = (string) ($meta['fee'] ?? '5000');
+                $slot = (int) ($result['slot'] ?? 0);
+                $isSuccessful = empty($meta['err']);
+
+                return new TransactionReceipt(
+                    txHash: $txHash,
+                    blockNumber: $slot,
+                    gasUsed: $feeLamports,
+                    effectiveGasPrice: '1',
+                    isSuccessful: $isSuccessful,
+                    logs: $meta['logMessages'] ?? [],
+                    raw: $result
+                );
+            }
+        } catch (\Throwable $e) {
+            // Not yet confirmed or RPC error
+        }
+
+        return null;
+    }
+
+    public function waitForTransactionReceipt(string $txHash, int $timeoutSeconds = 60, int $pollIntervalMs = 2000): TransactionReceipt|array|null
+    {
+        $startTime = time();
+        while ((time() - $startTime) < $timeoutSeconds) {
+            $receipt = $this->getTransactionReceipt($txHash);
+            if ($receipt !== null) {
+                return $receipt;
+            }
+            usleep($pollIntervalMs * 1000);
         }
 
         return null;

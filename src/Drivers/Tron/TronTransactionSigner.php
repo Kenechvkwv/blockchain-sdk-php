@@ -3,7 +3,6 @@
 namespace BlockchainSdk\Drivers\Tron;
 
 use BlockchainSdk\Contracts\TransactionSignerInterface;
-use BlockchainSdk\Crypto\Keccak;
 use BlockchainSdk\Crypto\Secp256k1;
 
 class TronTransactionSigner implements TransactionSignerInterface
@@ -17,9 +16,11 @@ class TronTransactionSigner implements TransactionSignerInterface
         $sig = Secp256k1::signRfc6979($privHex, $txHashHex);
 
         $vHex = dechex($sig['v'] + 27);
-        if (strlen($vHex) % 2 !== 0) $vHex = '0' . $vHex;
+        if (strlen($vHex) % 2 !== 0) {
+            $vHex = '0'.$vHex;
+        }
 
-        $signatureHex = $sig['r'] . $sig['s'] . $vHex;
+        $signatureHex = $sig['r'].$sig['s'].$vHex;
 
         $txData = $params['transaction_data'] ?? [];
         $txData['signature'] = [$signatureHex];

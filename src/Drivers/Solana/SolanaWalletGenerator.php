@@ -34,6 +34,7 @@ class SolanaWalletGenerator implements WalletGeneratorInterface
             $keypair = sodium_crypto_sign_seed_keypair($privKeyBin);
             $pubKeyBin = sodium_crypto_sign_publickey($keypair);
         }
+
         return Base58::encode($pubKeyBin);
     }
 }

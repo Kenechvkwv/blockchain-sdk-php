@@ -6,14 +6,14 @@ class Keccak
 {
     public static function hash(string $data): string
     {
-        $rate      = 136;
+        $rate = 136;
         $outputLen = 32;
 
         $padLen = $rate - (strlen($data) % $rate);
         if ($padLen === 1) {
             $data .= "\x81";
         } else {
-            $data .= "\x01" . str_repeat("\x00", $padLen - 2) . "\x80";
+            $data .= "\x01".str_repeat("\x00", $padLen - 2)."\x80";
         }
 
         $state = array_fill(0, 25, 0);
@@ -39,7 +39,7 @@ class Keccak
     {
         static $RC = null;
         if ($RC === null) {
-            $M  = PHP_INT_MIN;
+            $M = PHP_INT_MIN;
             $RC = [
                 0x0000000000000001,
                 0x0000000000008082,
@@ -69,8 +69,8 @@ class Keccak
         }
 
         static $ROT = [
-            [ 0, 36,  3, 41, 18],
-            [ 1, 44, 10, 45,  2],
+            [0, 36,  3, 41, 18],
+            [1, 44, 10, 45,  2],
             [62,  6, 43, 15, 61],
             [28, 55, 25, 21, 56],
             [27, 20, 39,  8, 14],
@@ -78,11 +78,11 @@ class Keccak
 
         for ($round = 0; $round < 24; $round++) {
             $C = [
-                $state[0]  ^ $state[5]  ^ $state[10] ^ $state[15] ^ $state[20],
-                $state[1]  ^ $state[6]  ^ $state[11] ^ $state[16] ^ $state[21],
-                $state[2]  ^ $state[7]  ^ $state[12] ^ $state[17] ^ $state[22],
-                $state[3]  ^ $state[8]  ^ $state[13] ^ $state[18] ^ $state[23],
-                $state[4]  ^ $state[9]  ^ $state[14] ^ $state[19] ^ $state[24],
+                $state[0] ^ $state[5] ^ $state[10] ^ $state[15] ^ $state[20],
+                $state[1] ^ $state[6] ^ $state[11] ^ $state[16] ^ $state[21],
+                $state[2] ^ $state[7] ^ $state[12] ^ $state[17] ^ $state[22],
+                $state[3] ^ $state[8] ^ $state[13] ^ $state[18] ^ $state[23],
+                $state[4] ^ $state[9] ^ $state[14] ^ $state[19] ^ $state[24],
             ];
             $D = [
                 $C[4] ^ self::rotl64($C[1], 1),
@@ -123,6 +123,7 @@ class Keccak
         if ($n === 0) {
             return $x;
         }
+
         return ($x << $n) | (($x >> (64 - $n)) & ~((-1) << $n));
     }
 }

@@ -14,10 +14,10 @@ class Keypair
     public function toArray(): array
     {
         return [
-            'address'     => $this->address,
+            'address' => $this->address,
             'private_key' => $this->privateKey,
-            'public_key'  => $this->publicKey,
-            'mnemonic'    => $this->mnemonic,
+            'public_key' => $this->publicKey,
+            'mnemonic' => $this->mnemonic,
         ];
     }
 }

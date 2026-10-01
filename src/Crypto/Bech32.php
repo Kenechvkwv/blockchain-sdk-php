@@ -9,16 +9,18 @@ class Bech32
     public static function encode(string $hrp, array $data): string
     {
         $combined = array_merge($data, self::createChecksum($hrp, $data));
-        $result = $hrp . '1';
+        $result = $hrp.'1';
         foreach ($combined as $val) {
             $result .= self::CHARSET[$val];
         }
+
         return $result;
     }
 
     public static function encodeSegwit(string $hrp, int $version, string $program): string
     {
         $data = array_merge([$version], self::convertBits(unpack('C*', $program), 8, 5, true));
+
         return self::encode($hrp, $data);
     }
 
@@ -39,7 +41,7 @@ class Bech32
             $data[] = $d;
         }
 
-        if (!self::verifyChecksum($hrp, $data)) {
+        if (! self::verifyChecksum($hrp, $data)) {
             return null;
         }
 
@@ -54,23 +56,31 @@ class Bech32
     private static function polymod(array $values): int
     {
         $chk = 1;
-        $gen = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+        $gen = [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3];
         foreach ($values as $v) {
             $b = $chk >> 25;
-            $chk = (($chk & 0x1ffffff) << 5) ^ $v;
+            $chk = (($chk & 0x1FFFFFF) << 5) ^ $v;
             for ($i = 0; $i < 5; $i++) {
-                if (($b >> $i) & 1) $chk ^= $gen[$i];
+                if (($b >> $i) & 1) {
+                    $chk ^= $gen[$i];
+                }
             }
         }
+
         return $chk;
     }
 
     private static function hrpExpand(string $hrp): array
     {
         $ret = [];
-        for ($i = 0; $i < strlen($hrp); $i++) $ret[] = ord($hrp[$i]) >> 5;
+        for ($i = 0; $i < strlen($hrp); $i++) {
+            $ret[] = ord($hrp[$i]) >> 5;
+        }
         $ret[] = 0;
-        for ($i = 0; $i < strlen($hrp); $i++) $ret[] = ord($hrp[$i]) & 31;
+        for ($i = 0; $i < strlen($hrp); $i++) {
+            $ret[] = ord($hrp[$i]) & 31;
+        }
+
         return $ret;
     }
 
@@ -82,6 +92,7 @@ class Bech32
         for ($i = 0; $i < 6; $i++) {
             $ret[] = ($mod >> 5 * (5 - $i)) & 31;
         }
+
         return $ret;
     }
 
@@ -102,6 +113,7 @@ class Bech32
         if ($pad && $bits > 0) {
             $ret[] = ($acc << ($toBits - $bits)) & $maxv;
         }
+
         return $ret;
     }
 }

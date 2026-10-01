@@ -3,24 +3,25 @@
 namespace BlockchainSdk\Http;
 
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
 
 class RpcClient
 {
     private Client $httpClient;
+
     private array $nodes;
+
     private int $currentNodeIndex = 0;
 
     public function __construct(
-        array $nodes, 
-        int $timeout = 10, 
+        array $nodes,
+        int $timeout = 10,
         array $headers = [],
         bool|string $verify = true
     ) {
-        $this->nodes = !empty($nodes) ? array_values($nodes) : ['http://localhost:8545'];
+        $this->nodes = ! empty($nodes) ? array_values($nodes) : ['http://localhost:8545'];
         $this->httpClient = new Client([
             'timeout' => $timeout,
-            'verify'  => $verify,
+            'verify' => $verify,
             'headers' => array_merge(['Content-Type' => 'application/json'], $headers),
         ]);
     }
@@ -29,22 +30,22 @@ class RpcClient
     {
         $payload = [
             'jsonrpc' => '2.0',
-            'method'  => $method,
-            'params'  => $params,
-            'id'      => $id,
+            'method' => $method,
+            'params' => $params,
+            'id' => $id,
         ];
 
-        return $this->executeWithFailover(fn($url) => $this->httpClient->post($url, ['json' => $payload]));
+        return $this->executeWithFailover(fn ($url) => $this->httpClient->post($url, ['json' => $payload]));
     }
 
     public function get(string $path = '', array $query = []): array
     {
-        return $this->executeWithFailover(fn($url) => $this->httpClient->get(rtrim($url, '/') . '/' . ltrim($path, '/'), ['query' => $query]));
+        return $this->executeWithFailover(fn ($url) => $this->httpClient->get(rtrim($url, '/').'/'.ltrim($path, '/'), ['query' => $query]));
     }
 
     public function post(string $path = '', array $body = []): array
     {
-        return $this->executeWithFailover(fn($url) => $this->httpClient->post(rtrim($url, '/') . '/' . ltrim($path, '/'), ['json' => $body]));
+        return $this->executeWithFailover(fn ($url) => $this->httpClient->post(rtrim($url, '/').'/'.ltrim($path, '/'), ['json' => $body]));
     }
 
     private function executeWithFailover(callable $callback): array
@@ -57,7 +58,7 @@ class RpcClient
             $url = $this->nodes[$this->currentNodeIndex];
             try {
                 $response = $callback($url);
-                $body = (string)$response->getBody();
+                $body = (string) $response->getBody();
                 $data = json_decode($body, true);
 
                 if (isset($data['error'])) {
@@ -72,6 +73,6 @@ class RpcClient
             }
         }
 
-        throw new \RuntimeException("All RPC nodes failed. Last error: " . ($lastException?->getMessage() ?? 'Unknown error'));
+        throw new \RuntimeException('All RPC nodes failed. Last error: '.($lastException?->getMessage() ?? 'Unknown error'));
     }
 }

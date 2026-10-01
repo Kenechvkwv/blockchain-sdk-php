@@ -15,15 +15,15 @@ class TronWalletGenerator implements WalletGeneratorInterface
         $n = gmp_init(Secp256k1::N_HEX, 16);
         do {
             $privBytes = random_bytes(32);
-            $privHex   = bin2hex($privBytes);
-            $privKey   = gmp_init($privHex, 16);
+            $privHex = bin2hex($privBytes);
+            $privKey = gmp_init($privHex, 16);
         } while (gmp_cmp($privKey, 1) < 0 || gmp_cmp($privKey, $n) >= 0);
 
         $address = $this->privateKeyToAddress($privHex);
 
         return new Keypair(
             address: $address,
-            privateKey: '0x' . $privHex
+            privateKey: '0x'.$privHex
         );
     }
 
@@ -33,7 +33,7 @@ class TronWalletGenerator implements WalletGeneratorInterface
         $pub = Secp256k1::privateKeyToPublicKey($privHex);
         $pubBytes = hex2bin(substr($pub['uncompressed'], 2));
         $hashHex = Keccak::hash($pubBytes);
-        $rawAddr = '41' . substr($hashHex, 24); // 41 prefix for TRON
+        $rawAddr = '41'.substr($hashHex, 24); // 41 prefix for TRON
 
         return Base58::encodeCheck(hex2bin($rawAddr));
     }
