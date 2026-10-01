@@ -14,6 +14,7 @@ class EvmTransactionSigner implements TransactionSignerInterface
         if (str_starts_with($clean, '0x') || str_starts_with($clean, '0X')) {
             return substr($clean, 2);
         }
+
         return $clean;
     }
 
@@ -21,15 +22,15 @@ class EvmTransactionSigner implements TransactionSignerInterface
     {
         $privHex = str_pad(strtolower(self::strip0x($params['private_key'])), 64, '0', STR_PAD_LEFT);
         $to = str_pad(strtolower(self::strip0x($params['to'])), 40, '0', STR_PAD_LEFT);
-        $nonce = (int)$params['nonce'];
-        $gasPriceWei = (string)$params['gas_price'];
-        $gasLimit = (int)$params['gas_limit'];
-        $valueWei = (string)($params['value'] ?? '0');
+        $nonce = (int) $params['nonce'];
+        $gasPriceWei = (string) $params['gas_price'];
+        $gasLimit = (int) $params['gas_limit'];
+        $valueWei = (string) ($params['value'] ?? '0');
         $data = self::strip0x($params['data'] ?? '');
         if (strlen($data) % 2 !== 0) {
-            $data = '0' . $data;
+            $data = '0'.$data;
         }
-        $chainId = (int)($params['chain_id'] ?? 1);
+        $chainId = (int) ($params['chain_id'] ?? 1);
 
         $fields = [
             self::encodeQuantity($nonce),
@@ -61,14 +62,21 @@ class EvmTransactionSigner implements TransactionSignerInterface
             self::encodeQuantity(gmp_init($sig['s'], 16)),
         ];
 
-        return '0x' . bin2hex(self::encodeRlpList($signedFields));
+        return '0x'.bin2hex(self::encodeRlpList($signedFields));
     }
 
     public static function buildErc20TransferData(string $toAddress, string $amountWei): string
     {
+        if (! preg_match('/^\d+$/', $amountWei)) {
+            throw new \InvalidArgumentException(
+                'buildErc20TransferData() expects an integer base-unit string (wei), got: '.var_export($amountWei, true).'. Use Decimal::toBaseUnit() to convert human-readable amounts.'
+            );
+        }
+
         $toClean = str_pad(strtolower(self::strip0x($toAddress)), 64, '0', STR_PAD_LEFT);
         $amountHex = str_pad(gmp_strval(gmp_init($amountWei, 10), 16), 64, '0', STR_PAD_LEFT);
-        return 'a9059cbb' . $toClean . $amountHex;
+
+        return 'a9059cbb'.$toClean.$amountHex;
     }
 
     private static function encodeQuantity($val): string
@@ -76,21 +84,31 @@ class EvmTransactionSigner implements TransactionSignerInterface
         if ($val instanceof \GMP) {
             $gmp = $val;
         } else {
-            $gmp = gmp_init((string)$val, 10);
+            $gmp = gmp_init((string) $val, 10);
         }
-        if (gmp_cmp($gmp, 0) === 0) return '';
+        if (gmp_cmp($gmp, 0) === 0) {
+            return '';
+        }
         $hex = gmp_strval($gmp, 16);
-        if (strlen($hex) % 2 !== 0) $hex = '0' . $hex;
+        if (strlen($hex) % 2 !== 0) {
+            $hex = '0'.$hex;
+        }
+
         return hex2bin($hex);
     }
 
     private static function encodeRlpItem(string $item): string
     {
         $len = strlen($item);
-        if ($len === 1 && ord($item) < 0x80) return $item;
-        if ($len <= 55) return chr(0x80 + $len) . $item;
+        if ($len === 1 && ord($item) < 0x80) {
+            return $item;
+        }
+        if ($len <= 55) {
+            return chr(0x80 + $len).$item;
+        }
         $lenBytes = self::encodeLength($len);
-        return chr(0xb7 + strlen($lenBytes)) . $lenBytes . $item;
+
+        return chr(0xB7 + strlen($lenBytes)).$lenBytes.$item;
     }
 
     private static function encodeRlpList(array $items): string
@@ -100,15 +118,21 @@ class EvmTransactionSigner implements TransactionSignerInterface
             $payload .= self::encodeRlpItem($item);
         }
         $len = strlen($payload);
-        if ($len <= 55) return chr(0xc0 + $len) . $payload;
+        if ($len <= 55) {
+            return chr(0xC0 + $len).$payload;
+        }
         $lenBytes = self::encodeLength($len);
-        return chr(0xf7 + strlen($lenBytes)) . $lenBytes . $payload;
+
+        return chr(0xF7 + strlen($lenBytes)).$lenBytes.$payload;
     }
 
     private static function encodeLength(int $len): string
     {
         $hex = dechex($len);
-        if (strlen($hex) % 2 !== 0) $hex = '0' . $hex;
+        if (strlen($hex) % 2 !== 0) {
+            $hex = '0'.$hex;
+        }
+
         return hex2bin($hex);
     }
 }

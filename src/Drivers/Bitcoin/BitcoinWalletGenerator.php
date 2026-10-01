@@ -14,15 +14,15 @@ class BitcoinWalletGenerator implements WalletGeneratorInterface
         $n = gmp_init(Secp256k1::N_HEX, 16);
         do {
             $privBytes = random_bytes(32);
-            $privHex   = bin2hex($privBytes);
-            $privKey   = gmp_init($privHex, 16);
+            $privHex = bin2hex($privBytes);
+            $privKey = gmp_init($privHex, 16);
         } while (gmp_cmp($privKey, 1) < 0 || gmp_cmp($privKey, $n) >= 0);
 
         $address = $this->privateKeyToAddress($privHex);
 
         return new Keypair(
             address: $address,
-            privateKey: '0x' . $privHex
+            privateKey: '0x'.$privHex
         );
     }
 

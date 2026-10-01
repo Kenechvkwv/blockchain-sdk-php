@@ -4,23 +4,28 @@ namespace BlockchainSdk\Drivers\Tron;
 
 use BlockchainSdk\Contracts\NetworkDriverInterface;
 use BlockchainSdk\Crypto\Base58;
+use BlockchainSdk\Crypto\Decimal;
 use BlockchainSdk\DTOs\Keypair;
 use BlockchainSdk\DTOs\TokenBalance;
+use BlockchainSdk\DTOs\TransactionReceipt;
 use BlockchainSdk\DTOs\TransactionResult;
 use BlockchainSdk\Http\RpcClient;
+use GuzzleHttp\Client;
 
 class TronDriver implements NetworkDriverInterface
 {
     private TronWalletGenerator $generator;
+
     private TronTransactionSigner $signer;
+
     private RpcClient $rpc;
 
     public function __construct(array $config)
     {
-        $this->generator = new TronWalletGenerator();
-        $this->signer = new TronTransactionSigner();
+        $this->generator = new TronWalletGenerator;
+        $this->signer = new TronTransactionSigner;
         $headers = [];
-        if (!empty($config['api_key'])) {
+        if (! empty($config['api_key'])) {
             $headers['TRON-PRO-API-KEY'] = $config['api_key'];
         }
         $this->rpc = new RpcClient(
@@ -38,12 +43,13 @@ class TronDriver implements NetworkDriverInterface
 
     public function validateAddress(string $address): bool
     {
-        if (!preg_match('/^T[1-9A-HJ-NP-Za-km-z]{33}$/', $address)) {
+        if (! preg_match('/^T[1-9A-HJ-NP-Za-km-z]{33}$/', $address)) {
             return false;
         }
 
         try {
             $decoded = Base58::decodeCheck($address);
+
             return strlen($decoded) === 21 && ord($decoded[0]) === 0x41;
         } catch (\Throwable $e) {
             return false;
@@ -55,7 +61,7 @@ class TronDriver implements NetworkDriverInterface
         if ($tokenContract) {
             $addrHex = bin2hex(Base58::decodeCheck($address));
             $contractHex = bin2hex(Base58::decodeCheck($tokenContract));
-            $data = '70a08231' . str_pad(substr($addrHex, 2), 64, '0', STR_PAD_LEFT);
+            $data = '70a08231'.str_pad(substr($addrHex, 2), 64, '0', STR_PAD_LEFT);
 
             $res = $this->rpc->post('wallet/triggerconstantcontract', [
                 'owner_address' => $addrHex,
@@ -76,12 +82,12 @@ class TronDriver implements NetworkDriverInterface
         }
 
         try {
-            $addrHex = str_starts_with($address, '41') && strlen($address) === 42 
-                ? $address 
+            $addrHex = str_starts_with($address, '41') && strlen($address) === 42
+                ? $address
                 : bin2hex(Base58::decodeCheck($address));
 
             $res = $this->rpc->post('wallet/getaccount', ['address' => $addrHex]);
-            $sun = (string)($res['balance'] ?? 0);
+            $sun = (string) ($res['balance'] ?? 0);
 
             return new TokenBalance(
                 symbol: 'TRX',
@@ -91,10 +97,10 @@ class TronDriver implements NetworkDriverInterface
             );
         } catch (\Throwable $e) {
             try {
-                $client = new \GuzzleHttp\Client(['timeout' => 5, 'verify' => false]);
+                $client = new Client(['timeout' => 5, 'verify' => false]);
                 $res = $client->get("https://api.trongrid.io/v1/accounts/{$address}");
                 $data = json_decode($res->getBody()->getContents(), true);
-                $sun = (string)($data['data'][0]['balance'] ?? 0);
+                $sun = (string) ($data['data'][0]['balance'] ?? 0);
 
                 return new TokenBalance(
                     symbol: 'TRX',
@@ -122,9 +128,9 @@ class TronDriver implements NetworkDriverInterface
 
         if ($tokenContract) {
             $contractHex = bin2hex(Base58::decodeCheck($tokenContract));
-            $decimals = (int)($params['decimals'] ?? 6);
-            $amountSun = (string)($params['amount_raw'] ?? \BlockchainSdk\Crypto\Decimal::toBaseUnit($params['amount'] ?? '0', $decimals));
-            $paramHex = str_pad(substr($toHex, 2), 64, '0', STR_PAD_LEFT) . str_pad(gmp_strval(gmp_init($amountSun, 10), 16), 64, '0', STR_PAD_LEFT);
+            $decimals = (int) ($params['decimals'] ?? 6);
+            $amountSun = (string) ($params['amount_raw'] ?? Decimal::toBaseUnit($params['amount'] ?? '0', $decimals));
+            $paramHex = str_pad(substr($toHex, 2), 64, '0', STR_PAD_LEFT).str_pad(gmp_strval(gmp_init($amountSun, 10), 16), 64, '0', STR_PAD_LEFT);
 
             $txData = $this->rpc->post('wallet/triggersmartcontract', [
                 'owner_address' => $ownerHex,
@@ -135,7 +141,7 @@ class TronDriver implements NetworkDriverInterface
             ]);
             $rawTx = $txData['transaction'] ?? [];
         } else {
-            $amountSun = (int)($params['amount_sun'] ?? \BlockchainSdk\Crypto\Decimal::toBaseUnit($params['amount'] ?? '0', 6));
+            $amountSun = (int) ($params['amount_sun'] ?? Decimal::toBaseUnit($params['amount'] ?? '0', 6));
             $rawTx = $this->rpc->post('wallet/createtransaction', [
                 'owner_address' => $ownerHex,
                 'to_address' => $toHex,
@@ -144,7 +150,7 @@ class TronDriver implements NetworkDriverInterface
         }
 
         if (empty($rawTx['raw_data_hex'])) {
-            return new TransactionResult(false, null, null, "Failed to create TRON transaction.");
+            return new TransactionResult(false, null, null, 'Failed to create TRON transaction.');
         }
 
         $signedJson = $this->signer->signTransaction([
@@ -163,6 +169,7 @@ class TronDriver implements NetworkDriverInterface
 
         if ($tokenContract) {
             $sweepAmount = $amount ?? $balance->balanceRaw;
+
             return $this->sendTransaction([
                 'from_private_key' => $fromPrivateKey,
                 'to' => $toAddress,
@@ -172,9 +179,9 @@ class TronDriver implements NetworkDriverInterface
         }
 
         $feeSun = 1500000; // 1.5 TRX standard bandwidth fee
-        $sweepable = bcsub($balance->balanceRaw, (string)$feeSun);
+        $sweepable = bcsub($balance->balanceRaw, (string) $feeSun);
         if (bccomp($sweepable, '0') <= 0) {
-            return new TransactionResult(false, null, null, "Insufficient TRX balance to cover network fee.");
+            return new TransactionResult(false, null, null, 'Insufficient TRX balance to cover network fee.');
         }
 
         return $this->sendTransaction([
@@ -195,14 +202,15 @@ class TronDriver implements NetworkDriverInterface
         $currentSun = $this->getBalance($subWalletAddress)->balanceRaw;
 
         if (bccomp($currentSun, $requiredSun) >= 0) {
-            return new TransactionResult(true, null, null, "Sub-wallet already has sufficient TRX energy balance.");
+            return new TransactionResult(true, null, null, 'Sub-wallet already has sufficient TRX energy balance.');
         }
 
         $deficit = bcsub($requiredSun, $currentSun);
+
         return $this->sendTransaction([
             'from_private_key' => $masterGasPrivateKey,
-            'to'               => $subWalletAddress,
-            'amount_sun'       => (int)$deficit,
+            'to' => $subWalletAddress,
+            'amount_sun' => (int) $deficit,
         ]);
     }
 
@@ -210,8 +218,8 @@ class TronDriver implements NetworkDriverInterface
     {
         $fromAddress = $this->generator->privateKeyToAddress($subWalletPrivateKey);
         $fuelResult = $this->fuelSubWallet($masterGasPrivateKey, $fromAddress, $tokenContract);
-        if (!$fuelResult->success && empty($fuelResult->txHash)) {
-            return new TransactionResult(false, null, null, "Failed to sponsor TRX fee: " . ($fuelResult->errorMessage ?? 'Unknown error'));
+        if (! $fuelResult->success && empty($fuelResult->txHash)) {
+            return new TransactionResult(false, null, null, 'Failed to sponsor TRX fee: '.($fuelResult->errorMessage ?? 'Unknown error'));
         }
 
         return $this->sweep($subWalletPrivateKey, $toVaultAddress, $tokenContract, $amount);
@@ -222,6 +230,7 @@ class TronDriver implements NetworkDriverInterface
         try {
             $payload = is_array($signedRawTx) ? $signedRawTx : (json_decode($signedRawTx, true) ?? []);
             $res = $this->rpc->post('wallet/broadcasttransaction', $payload);
+
             return new TransactionResult($res['result'] ?? false, $res['txid'] ?? null, is_string($signedRawTx) ? $signedRawTx : json_encode($signedRawTx));
         } catch (\Throwable $e) {
             return new TransactionResult(false, null, is_string($signedRawTx) ? $signedRawTx : json_encode($signedRawTx), $e->getMessage());
@@ -231,7 +240,7 @@ class TronDriver implements NetworkDriverInterface
     public function getLatestIncomingTxHash(string $address, ?string $tokenContract = null): ?string
     {
         try {
-            $client = new \GuzzleHttp\Client(['timeout' => 5, 'http_errors' => false]);
+            $client = new Client(['timeout' => 5, 'http_errors' => false]);
             if ($tokenContract) {
                 $url = "https://api.trongrid.io/v1/accounts/{$address}/transactions/trc20?limit=5";
                 $res = $client->get($url);
@@ -252,7 +261,7 @@ class TronDriver implements NetworkDriverInterface
                     foreach ($data['data'] ?? [] as $tx) {
                         $param = $tx['raw_data']['contract'][0]['parameter']['value'] ?? [];
                         $to = $param['to_address'] ?? '';
-                        if (!empty($tx['txID'])) {
+                        if (! empty($tx['txID'])) {
                             return $tx['txID'];
                         }
                     }
@@ -260,6 +269,47 @@ class TronDriver implements NetworkDriverInterface
             }
         } catch (\Throwable $e) {
             // Silently fallback
+        }
+
+        return null;
+    }
+
+    public function getTransactionReceipt(string $txHash): ?TransactionReceipt
+    {
+        try {
+            $res = $this->rpc->post('wallet/gettransactioninfobyid', ['value' => $txHash]);
+            if (! empty($res['id'])) {
+                $feeSun = (string) ($res['fee'] ?? '0');
+                $blockNumber = (int) ($res['blockNumber'] ?? 0);
+                $contractResult = $res['receipt']['result'] ?? ($res['contractResult'][0] ?? 'SUCCESS');
+                $isSuccessful = ($contractResult === 'SUCCESS');
+
+                return new TransactionReceipt(
+                    txHash: $txHash,
+                    blockNumber: $blockNumber,
+                    gasUsed: $feeSun,
+                    effectiveGasPrice: '1',
+                    isSuccessful: $isSuccessful,
+                    logs: $res['log'] ?? [],
+                    raw: $res
+                );
+            }
+        } catch (\Throwable $e) {
+            // Pending or node error
+        }
+
+        return null;
+    }
+
+    public function waitForTransactionReceipt(string $txHash, int $timeoutSeconds = 60, int $pollIntervalMs = 2000): TransactionReceipt|array|null
+    {
+        $startTime = time();
+        while ((time() - $startTime) < $timeoutSeconds) {
+            $receipt = $this->getTransactionReceipt($txHash);
+            if ($receipt !== null) {
+                return $receipt;
+            }
+            usleep($pollIntervalMs * 1000);
         }
 
         return null;

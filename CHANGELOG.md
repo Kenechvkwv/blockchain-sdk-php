@@ -7,6 +7,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.1.0] - 2026-10-01
+
+### 🚀 High-Performance Ingestion, Fee Accounting & Multi-Chain Architecture Upgrade
+
+This release brings end-to-end fee accounting, universal on-chain receipt extraction across all 4 chain families, high-throughput block-level deposit ingestion with chunked RPC pagination, storage-agnostic address indexing, and strict base-unit validation to prevent production transaction reverts.
+
+---
+
+### 1. 🛡️ Transaction Signer & Base-Unit Guard Clauses
+
+- **Strict Validation on `EvmTransactionSigner::buildErc20TransferData()`**:
+  - Added an assertion guard verifying that `$amountWei` is a non-empty string of pure base-10 digits (`/^\d+$/`).
+  - Previously, passing a float-string (e.g. `"6.0"` instead of `"6000000000000000000"`) triggered an unhandled `gmp_init(): Argument #1 ($num) is not an integer string` PHP fatal exception.
+  - Now throws an explicit `\InvalidArgumentException` detailing the invalid input and pointing directly to `Decimal::toBaseUnit()`.
+- **Pre-Flight Input Guards on `EvmDriver::sweep()`**:
+  - Added base-unit validation on both token and native currency sweep methods. Any input containing decimal points is rejected prior to ABI calldata encoding or gas estimation, preventing premature transaction broadcasts with invalid payloads.
+- **Utility Expansion in `BlockchainSdk\Crypto\Decimal`**:
+  - Added `Decimal::fromBaseUnit(string|int $baseUnit, int $decimals, ?int $scale = null): string` for arbitrary-precision reverse formatting from atomic base units (wei, lamports, sun, satoshis) into human-readable strings.
+
+---
+
+### 2. 🧾 Universal On-Chain Transaction Receipts & Fee Accounting
+
+- **Added `BlockchainSdk\DTOs\TransactionReceipt`**:
+  - Normalized, multi-chain DTO encapsulating:
+    - `txHash` (string): On-chain transaction identifier.
+    - `blockNumber` (int): Height of the block containing the transaction.
+    - `gasUsed` (string): Gas units, compute units, energy/bandwidth, or satoshis consumed.
+    - `effectiveGasPrice` (string): Gas price in base units (wei, lamports, etc.).
+    - `isSuccessful` (bool): True if transaction execution succeeded without EVM revert or chain errors.
+    - `logs` (array): Event logs emitted during execution.
+    - `raw` (array): Full provider RPC receipt payload.
+  - **Backward-Compatible `\ArrayAccess` Support**: Implements `ArrayAccess`, ensuring legacy code accessing `$receipt['blockNumber']` or `$receipt['gasUsed']` continues to work seamlessly without refactoring.
+  - **Monetary Methods**:
+    - `feeWei(): string`: Returns total fee in atomic base units via `bcmul($gasUsed, $effectiveGasPrice, 0)`.
+    - `feeSpent(int $decimals = 18): string`: Returns human-readable native currency fee formatted to 12 decimal places.
+- **Enriched `BlockchainSdk\DTOs\TransactionResult`**:
+  - Added optional `public readonly ?TransactionReceipt $receipt = null`.
+  - Added `$result->feeSpent(int $decimals = 18): ?string` helper method to directly expose native fees spent on successful broadcasts.
+- **Universal Receipt Methods on `NetworkDriverInterface`**:
+  - `getTransactionReceipt(string $txHash): ?TransactionReceipt`: Queries node once for immediate mined receipt.
+  - `waitForTransactionReceipt(string $txHash, int $timeoutSeconds = 60, int $pollIntervalMs = 2000): TransactionReceipt|array|null`: Polls with chain-adaptive timeouts until mined or timeout reached.
+- **Multi-Chain Driver Implementations**:
+  - **`EvmDriver`**: Maps `eth_getTransactionReceipt` fields (`blockNumber`, `gasUsed`, `effectiveGasPrice`, `status`, `logs`).
+  - **`TronDriver`**: Queries `wallet/gettransactioninfobyid`, extracting `fee` in sun and contract execution status.
+  - **`SolanaDriver`**: Queries `getTransaction` with `jsonParsed` encoding, extracting `meta.fee` in lamports and slot height.
+  - **`BitcoinDriver`**: Queries Mempool / Blockstream `/tx/{txid}`, extracting confirmed satoshi fee and block height.
+
+---
+
+### 3. 💼 End-to-End `SweepExecutor` & Accounting Orchestration
+
+- **Added `BlockchainSdk\Services\SweepExecutor`**:
+  - Unified orchestration service eliminating duplicated fee and sponsorship calculations across applications.
+  - **Two-Step EVM Sponsorship**: For ERC-20/BEP-20 tokens, automatically fuels sub-wallets from the configured master gas key, awaits fuel transaction confirmation via `waitForTransactionReceipt()`, and then sweeps the token into the destination vault.
+  - **Single-Step Non-EVM Sponsorship**: Invokes native driver gas sponsorship for Tron and Solana (`sweepTokenWithGasSponsorship`).
+  - **Full Audit Accounting**: Resolves on-chain receipts for both sponsorship and sweep transactions, computing total fees via `bcadd`.
+- **Added `BlockchainSdk\DTOs\SweepResult`**:
+  - Exposes:
+    - `transaction` (`TransactionResult`): Underlying token sweep transaction result.
+    - `sweepFeeSpent` (string): Native gas fee consumed by the token transfer.
+    - `sponsorshipFeeSpent` (string): Native gas fee consumed by the master gas dispenser fueling the sub-wallet.
+    - `sponsorshipTxHash` (?string): Transaction hash of the gas station funding transfer.
+    - `totalFeeSpent` (string): Cumulative gas cost (`sweepFeeSpent` + `sponsorshipFeeSpent`).
+    - `succeeded(): bool`: Convenience status helper.
+    - `txHash(): ?string`: Convenience hash getter.
+
+---
+
+### 4. ⚡ High-Throughput Block-Level Ingestion Engine
+
+- **RPC Log Chunking & Rate-Limit Resiliency in `EvmDriver`**:
+  - Added `getLogsChunked(int $fromBlock, int $toBlock, array $filter): array`:
+  - Automatically slices block ranges into provider-safe windows using `log_chunk_size` from configuration (defaults to 2,000 blocks; set to 10 for Alchemy Free Tier).
+  - Eliminates `-32602 Log response size exceeded` exceptions when scanning historical block spans.
+- **Block-Level Transfer Log Primitive**:
+  - Added `EvmDriver::getTransferLogs(int $fromBlock, int $toBlock, ?string $tokenContract = null, ?int $decimals = 18): array`.
+  - Scans ERC-20 `Transfer(address,address,uint256)` event topics across a block span in single RPC passes.
+  - Returns parsed, structured logs containing `from_address`, `to_address`, `amount_raw`, `amount`, `decimals`, `tx_hash`, `log_index`, and `block_number`.
+- **`--strategy=block-ingest` in `MonitorCommand`**:
+  - Added `--strategy=per-wallet` (default) and `--strategy=block-ingest` CLI options.
+  - `block-ingest` transforms deposit discovery from **O(wallets × tokens)** RPC queries to **O(blocks)** RPC queries.
+  - Queries new blocks once, matches incoming transfer recipients against the watched sub-wallet index in-memory, and registers confirmed deposits without individual wallet polling.
+- **Resumable Checkpointing**:
+  - Stored using Laravel's `Cache` facade (`blockchainsdk:checkpoint:{network}`).
+  - Automatically adapts to whichever cache store is configured (`file`, `redis`, `database`, `array`), ensuring crash-resilient scanning on shared hosting as well as enterprise infrastructure.
+
+---
+
+### 5. 🗄️ Storage-Agnostic Address Index (Shared Hosting to Enterprise)
+
+- **Added `BlockchainSdk\Contracts\AddressIndexInterface`**:
+  - Contract defining `sync(iterable $addresses): void`, `contains(string $address): bool`, and `resolve(string $address): ?int`.
+- **Implementations**:
+  - **`ArrayAddressIndex`**: Fast in-memory PHP hash-map (`$map[strtolower($address)] = $walletId`). Zero infrastructure requirements; uses ~1MB for 5,000 wallets. Recommended for shared hosting and test suites.
+  - **`DatabaseAddressIndex`**: Direct SQL database lookups via Laravel `DB` facade without Redis requirements.
+  - **`RedisAddressIndex`**: High-performance Redis hash-map (`HSET`/`HEXISTS`/`HGET`) designed for 100,000+ active sub-wallets.
+- **Added `BlockchainSdk\Services\AddressIndex\AddressIndexFactory`**:
+  - Auto-detection factory resolving the best available strategy.
+  - Non-throwing Redis ping check falls back seamlessly to `ArrayAddressIndex` if Redis is unreachable or uninstalled.
+- **Configuration in `config/blockchainsdk.php`**:
+  - Added `address_index` configuration block supporting `BLOCKCHAIN_ADDRESS_INDEX=auto|array|database|redis`.
+
+---
+
+### 6. 🔄 Ordered Token-First Sweep Pipeline
+
+- **`--all` Flag in `SweepCommand`**:
+  - Added `{--all : Sweep all tokens first, then sweep native balance last}` to `blockchainsdk:sweep`.
+  - Phase 1 iterates through all configured and enabled tokens on the network, sweeping them with gas sponsorship.
+  - Phase 2 sweeps the remaining native currency balance last.
+  - Prevents native gas from being swept prematurely, which previously stranded un-swept ERC-20/BEP-20 tokens.
+- **Accurate Fee Recording in `blockchainsdk_sweeps`**:
+  - `SweepCommand` now waits for on-chain receipt confirmation and records exact confirmed gas fees in `fee_spent` instead of recording 0.
+
+---
+
+### 7. 🧪 Expanded Test Suite
+
+- Added test cases covering:
+  - Strict input validation rejecting human-readable decimals in `EvmTransactionSigner::buildErc20TransferData()`.
+  - `TransactionReceipt` DTO construction, BCMath fee calculations, and `ArrayAccess` compatibility.
+  - `TransactionResult` receipt encapsulation and forwarding.
+  - `ArrayAddressIndex` case-insensitive address synchronization and resolution.
+  - `AddressIndexFactory` auto-selection and fallback mechanics.
+  - `SweepExecutor` complete orchestration, mock driver interaction, and fee aggregation.
+  - Multi-chain driver receipt extraction methods.
+
+---
+
 ## [v1.0.15] - 2026-08-25
 
 ### 🎯 Final Audit Sign-Off Remediations

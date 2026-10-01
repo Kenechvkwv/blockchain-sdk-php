@@ -34,7 +34,10 @@ We maintain a complete, ready-to-run demo application in the **[MrOkwor/blockcha
 - **Publishable Migrations & Eloquent Models**: Publish customizable database schemas and models (`BlockchainSdkWallet`, `BlockchainSdkDeposit`, `BlockchainSdkSweep`) directly into `app/Models/`.
 - **Event-Driven Value Crediting**: Dispatches lifecycle events (`DepositConfirmed`, `WalletSwept`) to give balance value to users immediately upon deposit confirmation or after vault consolidation.
 - **Multi-Node Failover RPC Client**: Built-in round-robin health-checking and automatic failover across multiple fallback RPC endpoints.
-- **Automated Vault Sweeper**: Compute network fees and automatically sweep funds from customer deposit addresses into master cold vaults.
+- **Automated Vault Sweeper**: Compute network fees and automatically sweep funds from customer deposit addresses into master cold vaults with token-first sweep priority (`--all`).
+- **High-Performance Event Log Ingestion (`block-ingest`)**: Scale from hundreds of wallets to millions. Ingests blocks once in $O(\text{blocks})$ time via `eth_getLogs` and matches incoming transfers in $O(1)$ sub-millisecond lookups.
+- **Storage-Agnostic Address Indexing (`AddressIndexInterface`)**: Universal indexing strategies for `redis`, `database` (relational SQL), and in-memory `array` (runs anywhere, including shared hosting without Redis).
+- **Exact Receipt & Fee Accounting (`TransactionReceipt`)**: Normalized on-chain transaction receipt parser across EVM, TRON, Solana, and Bitcoin with exact `feeSpent()` and `feeWei()` calculation.
 - **Full Laravel 10, 11, 12, and 13 Support**: First-class Service Provider, Facade (`Blockchain::driver(...)`), publishable `config/blockchainsdk.php`, and ready-to-use Artisan commands (`blockchainsdk:generate-master-wallets`, `blockchainsdk:sweep`, `blockchainsdk:monitor`).
 - **Offline & Secure Signing**: Private keys never leave your application server; transactions are constructed and signed locally before raw broadcast.
 
@@ -171,6 +174,54 @@ BLOCKCHAIN_GAS_KEY_TRON="eyJpdiI6Inl1Vn...[ENCRYPTED_SECRET]..."
 
 ---
 
+### 2.5 Recommended Node Provider Setup (Free API Keys)
+
+High-performance event log scanning (`eth_getLogs`) requires RPC endpoints that support topic queries and deep history. **Public community RPCs** (e.g. `rpc.ankr.com` or `binance.org`) frequently rate-limit or reject `eth_getLogs` with HTTP 429/403 errors.
+
+For production and staging, we strongly recommend using dedicated RPC providers with generous **Free Tiers**:
+
+#### 1. Alchemy (Recommended for EVM & Solana)
+- **Free Tier**: **300,000,000 Compute Units (CU) / month** for free.
+- **Supported Chains**: Ethereum, BNB Smart Chain, Polygon, Arbitrum, Base, Optimism, Solana, Tron.
+- **Sign Up**: [https://dashboard.alchemy.com](https://dashboard.alchemy.com)
+- **Setup in `.env`**:
+  ```env
+  ALCHEMY_API_KEY="your-alchemy-api-key-here"
+  ```
+  The SDK automatically routes requests to Alchemy for all supported networks when this key is set.
+
+> [!IMPORTANT]
+> **Alchemy Free Tier 10-Block Chunking Notice**:
+> Under Alchemy's Free Tier, `eth_getLogs` has a hard limit of **10 blocks per request**.
+> The SDK automatically chunks EVM block queries into 10-block windows (controlled by `evm_log_chunk_size => 10` in `config/blockchainsdk.php`), completely preventing `Query exceeds max block range 10` errors!
+> If you upgrade to Alchemy PAYG or a paid plan, you can increase this value in `.env`:
+> ```env
+> BLOCKCHAIN_EVM_LOG_CHUNK_SIZE=500
+> ```
+
+#### 2. TronGrid (Recommended for TRON)
+- **Free Tier**: Free API Key for high-speed TRON node queries and events without rate throttling.
+- **Sign Up**: [https://www.trongrid.io](https://www.trongrid.io)
+- **Setup in `.env`**:
+  ```env
+  TRON_PRO_API_KEY="your-trongrid-api-key-here"
+  ```
+
+#### 3. QuickNode / Custom RPC Endpoints
+You can configure custom or backup RPC nodes in `config/blockchainsdk.php`:
+```php
+'networks' => [
+    'bsc' => [
+        'rpc_nodes' => [
+            env('BSC_RPC_URL', 'https://bsc-dataseed.binance.org'),
+            'https://rpc.ankr.com/bsc',
+        ],
+    ],
+],
+```
+
+---
+
 ### 3. Validating Wallet Addresses in Laravel
 
 You can validate customer receiving/payout addresses using the `Blockchain::validateAddress()` facade or the built-in Laravel Validation Rule:
@@ -300,6 +351,57 @@ $btcTxId = Blockchain::driver('bitcoin')->getLatestIncomingTxHash(
 
 ---
 
+### 5.6 Real-Time Deposit Monitoring & High-Performance Block Ingestion
+
+The SDK provides an enterprise-grade deposit monitor daemon capable of scanning incoming on-chain transfers and advancing block confirmation depths until finality.
+
+You can run the monitor in two distinct modes:
+
+#### Mode 1: High-Performance Block Ingestion (`--strategy=block-ingest`) — Recommended
+Instead of polling each sub-wallet individually over RPC ($O(\text{wallets} \times \text{tokens})$), the `block-ingest` strategy queries the blockchain **once per block window** via `eth_getLogs` and matches recipient addresses against an in-memory/Redis `AddressIndex` in **$O(1)$ time ($<0.1\text{ ms}$)**:
+
+```bash
+# High-performance block-level event ingestion (scales to millions of wallets at $0 extra RPC cost)
+php artisan blockchainsdk:monitor --strategy=block-ingest
+
+# Target a specific network
+php artisan blockchainsdk:monitor bsc --strategy=block-ingest
+```
+
+- **Resumable Checkpoints**: The daemon tracks the latest scanned block height in `blockchainsdk:checkpoint:{network}` so it automatically resumes from where it left off after restarts.
+- **Archive Protection**: If your worker was offline and drifts far behind the chain tip, the monitor automatically clamps lag to prevent expensive archive-node paywall errors on free RPC tiers.
+
+#### Mode 2: Per-Wallet Polling (`--strategy=per-wallet`) — Default / Fallback
+Loops through active sub-wallets in your database and checks incoming transfers for each configured token:
+```bash
+php artisan blockchainsdk:monitor --strategy=per-wallet
+```
+
+#### Storage-Agnostic Address Indexing (`AddressIndexInterface`)
+In `block-ingest` mode, the SDK uses an address index to resolve recipient addresses in sub-millisecond time. You can choose the storage strategy that fits your server infrastructure in `config/blockchainsdk.php`:
+
+```php
+'address_index' => [
+    // 'auto'     => Uses Redis if available, falls back to Array in-memory
+    // 'redis'    => High-performance Redis hash/set for production scale
+    // 'database' => Relational SQL table lookup for servers without Redis (shared hosting)
+    // 'array'    => Ephemeral in-memory array (ideal for tests and microservices)
+    'strategy' => env('BLOCKCHAIN_ADDRESS_INDEX_STRATEGY', 'auto'),
+],
+```
+
+#### Scheduling in Laravel (`routes/console.php`)
+Add the monitor to your Laravel scheduler to run continuously in the background:
+```php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('blockchainsdk:monitor --strategy=block-ingest')
+    ->everyMinute()
+    ->withoutOverlapping();
+```
+
+---
+
 ### 6. Sweeping Sub-Wallets into Master Vaults in Laravel
 
 #### A. Sweeping Native Currency via Facade
@@ -347,6 +449,38 @@ $result = $driver->sweepTokenWithGasSponsorship(
     toVaultAddress:      Blockchain::getMasterWallet('polygon'),
     tokenContract:       '0xc2132D05D31c914a87C6611C10748AEb04B58e8F' // USDT
 );
+```
+
+#### D. Token-First Sweeping via Artisan (`--all`)
+To ensure configured ERC-20/SPL/TRC-20 tokens are swept **before** native gas currency is drained, use the `--all` flag:
+
+```bash
+# Sweeps all configured tokens first, then sweeps remaining native gas
+php artisan blockchainsdk:sweep --network=bsc --all --sponsor --credit
+```
+
+#### E. Unified Sweeping Engine (`SweepExecutor`) & Exact Fee Receipts
+For custom services or non-Laravel scripts, the SDK provides `SweepExecutor`, which orchestrates gas sponsorship, sweeping, and on-chain receipt extraction:
+
+```php
+use BlockchainSdk\Services\SweepExecutor;
+
+$executor = new SweepExecutor();
+$result = $executor->execute(
+    driver: $driver,
+    network: 'polygon',
+    fromAddress: $wallet->address,
+    fromPrivateKey: $wallet->private_key,
+    toVaultAddress: $masterVault,
+    tokenContract: $usdtContract,
+    masterGasPrivateKey: $gasKey, // Optional auto-sponsorship
+);
+
+if ($result->transaction->success) {
+    echo "Sweep Tx: " . $result->transaction->txHash;
+    echo "Confirmed Fee Spent: " . $result->feeSpent(); // In native currency (e.g. MATIC/POL)
+    echo "Gas Used: " . $result->receipt?->gasUsed;
+}
 ```
 
 ---
@@ -435,11 +569,84 @@ class CreditUserOnDepositListener
 | Command | Description | Options |
 | :--- | :--- | :--- |
 | `php artisan blockchainsdk:generate-master-wallets` | Generates master cold vault receiving addresses and hot gas station credentials in separated `.env` blocks | `--network=`, `--no-encrypt`, `--no-store`, `--force` |
-| `php artisan blockchainsdk:sweep` | Sweeps sub-wallets into central cold vault | `--network=`, `--token=` (symbol/contract), `--sponsor` (auto-gas), `--credit` (dispatch value event) |
-| `php artisan blockchainsdk:monitor` | Multi-chain background deposit confirmation listener | `--network=`, `--token=`, `--once` (run single pass) |
+| `php artisan blockchainsdk:sweep` | Sweeps sub-wallets into central cold vault | `--network=`, `--token=` (symbol/contract), `--all` (token-first sweep), `--sponsor` (auto-gas), `--credit` (dispatch value event) |
+| `php artisan blockchainsdk:monitor` | Multi-chain background deposit confirmation listener | `--network=`, `--token=`, `--strategy=block-ingest\|per-wallet`, `--once` (run single pass) |
 | `php artisan vendor:publish --tag="blockchainsdk-config"` | Publishes `config/blockchainsdk.php` | `--force` (overwrite existing) |
 | `php artisan vendor:publish --tag="blockchainsdk-migrations"` | Publishes database migrations | `--force` (overwrite existing) |
 | `php artisan vendor:publish --tag="blockchainsdk-models"` | Publishes Eloquent models to `app/Models/` | `--force` (overwrite existing) |
+
+---
+
+### 9. Upgrading to v1.1.0 from v1.0.x
+
+`v1.1.0` introduces enterprise-scale block event ingestion (`--strategy=block-ingest`), storage-agnostic address indexing (`AddressIndexInterface`), exact on-chain fee accounting via `TransactionReceipt`, and token-first sweeping (`--all`).
+
+Follow these steps to upgrade an existing application:
+
+#### Step 1: Update Composer Dependency
+```bash
+composer update mrokwor/blockchain-sdk-php
+```
+
+#### Step 2: Republish Configuration (`config/blockchainsdk.php`)
+`v1.1.0` introduces new configuration options for `evm_log_chunk_size`, `address_index`, and provider-agnostic `rpc_nodes`.
+
+Force republish the configuration file:
+```bash
+php artisan vendor:publish --tag="blockchainsdk-config" --force
+```
+
+> [!CAUTION]
+> If you have custom tokens, contract addresses, or custom master vaults in `config/blockchainsdk.php`, back them up first, or manually merge the new sections:
+> - `'evm_log_chunk_size' => (int) env('BLOCKCHAIN_EVM_LOG_CHUNK_SIZE', 10)`
+> - `'address_index' => [...]`
+> - Provider `.env` RPC lookups under `'rpc_nodes' => array_values(array_filter([...]))`
+
+#### Step 3: Configure Dedicated RPC Providers in `.env`
+Public community RPC nodes often block or throttle `eth_getLogs`. To use the new high-performance block ingestion engine, set your dedicated provider URL in `.env`:
+```env
+# Dedicated node providers (e.g. Alchemy, QuickNode, Infura)
+ETHEREUM_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+BSC_RPC_URL="https://bnb-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+POLYGON_RPC_URL="https://polygon-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+SOLANA_RPC_URL="https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+TRON_RPC_URL="https://api.trongrid.io"
+TRON_PRO_API_KEY="your-trongrid-api-key"
+
+# Optional: Adjust chunk size for paid/PAYG RPC plans (defaults to 10 for Alchemy Free Tier)
+BLOCKCHAIN_EVM_LOG_CHUNK_SIZE=10
+
+# Optional: Address Index Strategy ('auto', 'redis', 'database', 'array')
+BLOCKCHAIN_ADDRESS_INDEX_STRATEGY=auto
+```
+
+#### Step 4: Update Your Scheduled Commands (`routes/console.php`)
+1. **Switch to Block Ingestion**:
+   ```php
+   // Change from default per-wallet polling to block-level event ingestion:
+   Schedule::command('blockchainsdk:monitor --strategy=block-ingest')
+       ->everyMinute()
+       ->withoutOverlapping();
+   ```
+2. **Switch to Token-First Sweeping**:
+   ```php
+   // Sweeps all configured ERC-20/SPL/TRC-20 tokens first before draining native gas coin:
+   Schedule::command('blockchainsdk:sweep --all --sponsor --credit')
+       ->everyFifteenMinutes()
+       ->withoutOverlapping();
+   ```
+
+#### Step 5: (Optional) Access Exact Confirmed Fees
+If you are programmatically recording sweep fees, update your calls to use the normalized `TransactionReceipt`:
+```php
+// Old (v1.0.x):
+$fee = $result->feeSpent ?? 0;
+
+// New (v1.1.0):
+$exactFeeNative = $result->feeSpent();             // In native coin (ETH, BNB, MATIC, SOL, TRX)
+$exactFeeWei    = $result->receipt?->feeWei();     // In atomic units (Wei, Sun, Satoshis)
+$gasUsed        = $result->receipt?->gasUsed;      // Actual units of gas consumed on-chain
+```
 
 ---
 

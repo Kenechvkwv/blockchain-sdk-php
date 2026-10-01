@@ -12,11 +12,11 @@ class BlockchainSdkDeposit extends Model
     protected $guarded = [];
 
     protected $casts = [
-        'amount'       => 'decimal:8',
-        'is_credited'  => 'boolean',
-        'is_swept'     => 'boolean',
-        'credited_at'  => 'datetime',
-        'swept_at'     => 'datetime',
+        'amount' => 'decimal:8',
+        'is_credited' => 'boolean',
+        'is_swept' => 'boolean',
+        'credited_at' => 'datetime',
+        'swept_at' => 'datetime',
     ];
 
     public function wallet(): BelongsTo
@@ -28,7 +28,7 @@ class BlockchainSdkDeposit extends Model
     {
         return $this->update([
             'is_credited' => true,
-            'status'      => 'credited',
+            'status' => 'credited',
             'credited_at' => now(),
         ]);
     }
@@ -36,10 +36,10 @@ class BlockchainSdkDeposit extends Model
     public function markAsSwept(string $sweepTxHash): bool
     {
         return $this->update([
-            'is_swept'      => true,
+            'is_swept' => true,
             'sweep_tx_hash' => $sweepTxHash,
-            'status'        => 'swept',
-            'swept_at'      => now(),
+            'status' => 'swept',
+            'swept_at' => now(),
         ]);
     }
 }

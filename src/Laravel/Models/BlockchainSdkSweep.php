@@ -12,10 +12,10 @@ class BlockchainSdkSweep extends Model
     protected $guarded = [];
 
     protected $casts = [
-        'amount'       => 'decimal:8',
-        'fee_spent'    => 'decimal:8',
-        'is_credited'  => 'boolean',
-        'credited_at'  => 'datetime',
+        'amount' => 'decimal:8',
+        'fee_spent' => 'decimal:8',
+        'is_credited' => 'boolean',
+        'credited_at' => 'datetime',
     ];
 
     public function wallet(): BelongsTo

@@ -3,14 +3,17 @@
 namespace BlockchainSdk\Tests;
 
 use BlockchainSdk\BlockchainManager;
+use BlockchainSdk\Contracts\NetworkDriverInterface;
 use BlockchainSdk\Crypto\Decimal;
-use BlockchainSdk\Crypto\Keccak;
 use BlockchainSdk\Crypto\Secp256k1;
 use BlockchainSdk\Drivers\Bitcoin\BitcoinTransactionSigner;
-use BlockchainSdk\Drivers\Evm\EvmDriver;
 use BlockchainSdk\Drivers\Evm\EvmTransactionSigner;
 use BlockchainSdk\Drivers\Solana\SolanaTransactionSigner;
-use BlockchainSdk\Http\RpcClient;
+use BlockchainSdk\DTOs\TransactionReceipt;
+use BlockchainSdk\DTOs\TransactionResult;
+use BlockchainSdk\Services\AddressIndex\AddressIndexFactory;
+use BlockchainSdk\Services\AddressIndex\ArrayAddressIndex;
+use BlockchainSdk\Services\SweepExecutor;
 use Illuminate\Support\Facades\Crypt;
 use Tests\TestCase;
 
@@ -25,11 +28,11 @@ class BlockchainSdkTest extends TestCase
             'default' => 'ethereum',
             'master_wallets' => [
                 'ethereum' => '0x71C8360f3a104d31a4570b9A821929342939b422',
-                'bsc'      => '0x55d398326f99059fF775485246999027B3197955',
+                'bsc' => '0x55d398326f99059fF775485246999027B3197955',
             ],
             'master_gas_wallets' => [
                 'ethereum' => [
-                    'address'     => '0x71C8360f3a104d31a4570b9A821929342939b422',
+                    'address' => '0x71C8360f3a104d31a4570b9A821929342939b422',
                     'private_key' => 'plain:0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d',
                 ],
             ],
@@ -41,13 +44,13 @@ class BlockchainSdkTest extends TestCase
                     'tokens' => [
                         'USDT' => ['name' => 'Tether USD', 'contract' => '0xdAC17F958D2ee523a2206206994597C13D831ec7', 'decimals' => 6, 'status' => 'enabled'],
                         'OLD_TOKEN' => ['name' => 'Old Token', 'contract' => '0x0000000000000000000000000000000000000001', 'decimals' => 18, 'status' => 'disabled'],
-                    ]
+                    ],
                 ],
-                'bsc'      => ['chain_id' => 56, 'currency' => 'BNB', 'rpc_nodes' => ['https://bsc-dataseed.binance.org']],
-                'solana'   => ['rpc_nodes' => ['https://api.mainnet-beta.solana.com']],
-                'bitcoin'  => ['rpc_nodes' => ['https://mempool.space/api']],
-                'tron'     => ['rpc_nodes' => ['https://api.trongrid.io']],
-            ]
+                'bsc' => ['chain_id' => 56, 'currency' => 'BNB', 'rpc_nodes' => ['https://bsc-dataseed.binance.org']],
+                'solana' => ['rpc_nodes' => ['https://api.mainnet-beta.solana.com']],
+                'bitcoin' => ['rpc_nodes' => ['https://mempool.space/api']],
+                'tron' => ['rpc_nodes' => ['https://api.trongrid.io']],
+            ],
         ]);
     }
 
@@ -58,14 +61,14 @@ class BlockchainSdkTest extends TestCase
         $this->assertEquals(42, strlen($wallet->address));
 
         // Test EIP-155 transaction signing
-        $signedRaw = (new EvmTransactionSigner())->signTransaction([
+        $signedRaw = (new EvmTransactionSigner)->signTransaction([
             'private_key' => $wallet->privateKey,
-            'to'          => '0x0000000000000000000000000000000000000000',
-            'nonce'       => 0,
-            'gas_price'   => '20000000000',
-            'gas_limit'   => 21000,
-            'value'       => '1000000000000000000',
-            'chain_id'    => 1,
+            'to' => '0x0000000000000000000000000000000000000000',
+            'nonce' => 0,
+            'gas_price' => '20000000000',
+            'gas_limit' => 21000,
+            'value' => '1000000000000000000',
+            'chain_id' => 1,
         ]);
 
         $this->assertStringStartsWith('0x', $signedRaw);
@@ -133,12 +136,12 @@ class BlockchainSdkTest extends TestCase
 
         // Test Native SOL transaction signing
         $dummyBlockhash = '4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM';
-        $signedTx = (new SolanaTransactionSigner())->signTransaction([
-            'private_key'      => $wallet->privateKey,
-            'from_address'     => $wallet->address,
-            'to_address'       => '11111111111111111111111111111111',
+        $signedTx = (new SolanaTransactionSigner)->signTransaction([
+            'private_key' => $wallet->privateKey,
+            'from_address' => $wallet->address,
+            'to_address' => '11111111111111111111111111111111',
             'recent_blockhash' => $dummyBlockhash,
-            'lamports'         => 100000000,
+            'lamports' => 100000000,
         ]);
 
         $this->assertNotEmpty($signedTx);
@@ -152,10 +155,10 @@ class BlockchainSdkTest extends TestCase
 
         $dummyUtxos = [
             [
-                'txid'  => '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b',
-                'vout'  => 0,
+                'txid' => '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b',
+                'vout' => 0,
                 'value' => 1000000,
-            ]
+            ],
         ];
 
         $unsigned = BitcoinTransactionSigner::buildUnsignedSegwitTx(
@@ -169,8 +172,8 @@ class BlockchainSdkTest extends TestCase
         $this->assertNotNull($unsigned);
         $this->assertCount(1, $unsigned['inputs']);
 
-        $signedHex = (new BitcoinTransactionSigner())->signTransaction([
-            'tx'          => $unsigned,
+        $signedHex = (new BitcoinTransactionSigner)->signTransaction([
+            'tx' => $unsigned,
             'private_key' => $wallet->privateKey,
         ]);
 
@@ -230,7 +233,7 @@ class BlockchainSdkTest extends TestCase
 
         // 3. Corrupted enc:v1: must fail closed with RuntimeException (SEC-02)
         $this->expectException(\RuntimeException::class);
-        BlockchainManager::decryptSecret("enc:v1:CorruptedInvalidPayload");
+        BlockchainManager::decryptSecret('enc:v1:CorruptedInvalidPayload');
     }
 
     public function test_unconfigured_unresolvable_token_decimals_fails_explicitly(): void
@@ -241,5 +244,112 @@ class BlockchainSdkTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Cannot determine decimals for token contract');
         $driver->getBalance('0x71C8360f3a104d31a4570b9A821929342939b422', '0x1111111111111111111111111111111111111111');
+    }
+
+    public function test_erc20_transfer_calldata_assembly_rejects_human_decimal_strings(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('expects an integer base-unit string');
+        EvmTransactionSigner::buildErc20TransferData('0x71C8360f3a104d31a4570b9A821929342939b422', '50.123456');
+    }
+
+    public function test_transaction_receipt_dto_and_fee_calculation(): void
+    {
+        $receipt = new TransactionReceipt(
+            txHash: '0xabc123',
+            blockNumber: 123456,
+            gasUsed: '50000',
+            effectiveGasPrice: '3000000000', // 3 Gwei
+            isSuccessful: true,
+            logs: [],
+            raw: ['blockNumber' => '0x1e240']
+        );
+
+        // 50000 * 3000000000 = 150000000000000 wei = 0.00015 ETH
+        $this->assertEquals('150000000000000', $receipt->feeWei());
+        $this->assertEquals('0.000150000000', $receipt->feeSpent(18));
+        $this->assertTrue($receipt->isSuccessful);
+
+        // ArrayAccess backward compatibility
+        $this->assertTrue(isset($receipt['blockNumber']));
+        $this->assertEquals('0x1e240', $receipt['blockNumber']);
+    }
+
+    public function test_transaction_result_enrichment_with_receipt(): void
+    {
+        $receipt = new TransactionReceipt(
+            txHash: '0xabc123',
+            blockNumber: 100,
+            gasUsed: '21000',
+            effectiveGasPrice: '1000000000', // 1 Gwei
+            isSuccessful: true
+        );
+
+        $result = new TransactionResult(
+            success: true,
+            txHash: '0xabc123',
+            receipt: $receipt
+        );
+
+        $this->assertTrue($result->success);
+        $this->assertNotNull($result->receipt);
+        $this->assertEquals('0.000021000000', $result->feeSpent(18));
+    }
+
+    public function test_array_address_index_sync_and_case_insensitive_lookup(): void
+    {
+        $index = new ArrayAddressIndex;
+        $index->sync([
+            101 => '0x71C8360f3a104d31a4570b9A821929342939b422',
+            102 => '0x55d398326f99059fF775485246999027B3197955',
+        ]);
+
+        $this->assertTrue($index->contains('0x71c8360f3a104d31a4570b9a821929342939b422'));
+        $this->assertTrue($index->contains('0X71C8360F3A104D31A4570B9A821929342939B422'));
+        $this->assertEquals(101, $index->resolve('0x71c8360f3a104d31a4570b9a821929342939b422'));
+        $this->assertFalse($index->contains('0x0000000000000000000000000000000000000000'));
+        $this->assertNull($index->resolve('0x0000000000000000000000000000000000000000'));
+    }
+
+    public function test_address_index_factory_fallback_to_array(): void
+    {
+        $index = AddressIndexFactory::make('ethereum', ['strategy' => 'array']);
+        $this->assertInstanceOf(ArrayAddressIndex::class, $index);
+    }
+
+    public function test_sweep_executor_orchestration_and_fee_aggregation(): void
+    {
+        $driverMock = $this->createMock(NetworkDriverInterface::class);
+
+        $driverMock->expects($this->once())
+            ->method('sweep')
+            ->willReturn(new TransactionResult(true, '0xsweep123'));
+
+        $driverMock->expects($this->any())
+            ->method('getTransactionReceipt')
+            ->with('0xsweep123')
+            ->willReturn(new TransactionReceipt(
+                txHash: '0xsweep123',
+                blockNumber: 500,
+                gasUsed: '45000',
+                effectiveGasPrice: '2000000000', // 90000000000000 wei = 0.00009 ETH
+                isSuccessful: true
+            ));
+
+        $executor = new SweepExecutor;
+        $result = $executor->execute(
+            driver: $driverMock,
+            network: 'ethereum',
+            fromAddress: '0xfrom',
+            fromPrivateKey: '0xpriv',
+            toVaultAddress: '0xvault',
+            tokenContract: null,
+            amount: '1000000000000000000'
+        );
+
+        $this->assertTrue($result->succeeded());
+        $this->assertEquals('0xsweep123', $result->txHash());
+        $this->assertEquals('0.000090000000', $result->sweepFeeSpent);
+        $this->assertEquals('0.000090000000000000', $result->totalFeeSpent);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace BlockchainSdk\Laravel\Facades;
 
+use BlockchainSdk\BlockchainManager;
 use Illuminate\Support\Facades\Facade;
 
 /**
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static array|null findToken(string $network, string $symbolOrContract, bool $onlyEnabled = false)
  * @method static bool isTokenEnabled(string $network, string $symbolOrContract)
  *
- * @see \BlockchainSdk\BlockchainManager
+ * @see BlockchainManager
  */
 class Blockchain extends Facade
 {

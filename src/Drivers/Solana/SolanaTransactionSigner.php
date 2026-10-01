@@ -24,7 +24,7 @@ class SolanaTransactionSigner implements TransactionSignerInterface
         }
 
         if (strlen($recentBlockhash) !== 32) {
-            throw new \InvalidArgumentException("Invalid Solana recentBlockhash length: must be 32 bytes.");
+            throw new \InvalidArgumentException('Invalid Solana recentBlockhash length: must be 32 bytes.');
         }
 
         $tokenContract = $params['token_contract'] ?? null;
@@ -36,37 +36,38 @@ class SolanaTransactionSigner implements TransactionSignerInterface
             $toAtaPub = str_pad(Base58::decode(self::deriveAssociatedTokenAccount($params['to_address'], $tokenContract)), 32, "\x00", STR_PAD_LEFT);
             $tokenProgram = str_pad(Base58::decode('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), 32, "\x00", STR_PAD_LEFT);
 
-            $amountRaw = (int)$params['amount_raw'];
-            $decimals = (int)($params['decimals'] ?? 6);
+            $amountRaw = (int) $params['amount_raw'];
+            $decimals = (int) ($params['decimals'] ?? 6);
 
             // TransferChecked Instruction data: [12 (u8), amount (u64 little-endian), decimals (u8)]
-            $instructionData = chr(12) . pack('P', $amountRaw) . chr($decimals);
+            $instructionData = chr(12).pack('P', $amountRaw).chr($decimals);
 
             // Account Keys: [From (payer/signer), From ATA, Mint, To ATA, TokenProgram]
             $accountKeys = [$fromPub, $fromAtaPub, $tokenMintPub, $toAtaPub, $tokenProgram];
             $header = "\x01\x00\x02"; // 1 signer, 0 readonly signed, 2 readonly unsigned
 
-            $accountsPayload = self::compactU16(count($accountKeys)) . implode('', $accountKeys);
-            $compiledInstruction = chr(4) . "\x04\x01\x02\x03\x00" . self::compactU16(strlen($instructionData)) . $instructionData;
-            $instructionsPayload = self::compactU16(1) . $compiledInstruction;
+            $accountsPayload = self::compactU16(count($accountKeys)).implode('', $accountKeys);
+            $compiledInstruction = chr(4)."\x04\x01\x02\x03\x00".self::compactU16(strlen($instructionData)).$instructionData;
+            $instructionsPayload = self::compactU16(1).$compiledInstruction;
         } else {
             // Native SOL SystemProgram Transfer Instruction (Type 2)
-            $lamports = (int)$params['lamports'];
-            $instructionData = pack('V', 2) . pack('P', $lamports);
+            $lamports = (int) $params['lamports'];
+            $instructionData = pack('V', 2).pack('P', $lamports);
 
             $systemProgram = str_pad(Base58::decode('11111111111111111111111111111111'), 32, "\x00", STR_PAD_LEFT);
             $accountKeys = [$fromPub, $toPub, $systemProgram];
             $header = "\x01\x00\x01";
 
-            $accountsPayload = self::compactU16(count($accountKeys)) . implode('', $accountKeys);
-            $compiledInstruction = chr(2) . "\x02\x00\x01" . self::compactU16(strlen($instructionData)) . $instructionData;
-            $instructionsPayload = self::compactU16(1) . $compiledInstruction;
+            $accountsPayload = self::compactU16(count($accountKeys)).implode('', $accountKeys);
+            $compiledInstruction = chr(2)."\x02\x00\x01".self::compactU16(strlen($instructionData)).$instructionData;
+            $instructionsPayload = self::compactU16(1).$compiledInstruction;
         }
 
-        $message = $header . $accountsPayload . $recentBlockhash . $instructionsPayload;
+        $message = $header.$accountsPayload.$recentBlockhash.$instructionsPayload;
         $signature = sodium_crypto_sign_detached($message, $secretKey);
 
-        $serializedTx = self::compactU16(1) . $signature . $message;
+        $serializedTx = self::compactU16(1).$signature.$message;
+
         return base64_encode($serializedTx);
     }
 
@@ -74,10 +75,11 @@ class SolanaTransactionSigner implements TransactionSignerInterface
     {
         $out = '';
         while ($val >= 0x80) {
-            $out .= chr(($val & 0x7f) | 0x80);
+            $out .= chr(($val & 0x7F) | 0x80);
             $val >>= 7;
         }
-        $out .= chr($val & 0x7f);
+        $out .= chr($val & 0x7F);
+
         return $out;
     }
 
@@ -90,11 +92,13 @@ class SolanaTransactionSigner implements TransactionSignerInterface
 
         // Seeds: [wallet, token_program, mint]
         for ($bump = 255; $bump >= 0; $bump--) {
-            $buffer = $walletPub . $tokenProgram . $mintPub . chr($bump) . $ataProgram . "ProgramDerivedAddress";
+            $buffer = $walletPub.$tokenProgram.$mintPub.chr($bump).$ataProgram.'ProgramDerivedAddress';
             $hash = hash('sha256', $buffer, true);
+
             // Check if off ed25519 curve
             return Base58::encode($hash);
         }
+
         return '';
     }
 }

@@ -14,7 +14,7 @@ class BlockchainSdkWallet extends Model
 
     protected $casts = [
         'private_key' => 'encrypted',
-        'is_active'   => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     public function deposits(): HasMany
@@ -32,13 +32,13 @@ class BlockchainSdkWallet extends Model
         $keypair = Blockchain::driver($network)->generateWallet();
 
         return self::create([
-            'user_id'     => $userId,
-            'network'     => strtolower($network),
-            'address'     => $keypair->address,
+            'user_id' => $userId,
+            'network' => strtolower($network),
+            'address' => $keypair->address,
             'private_key' => $keypair->privateKey,
-            'public_key'  => $keypair->publicKey,
-            'mnemonic'    => $keypair->mnemonic,
-            'is_active'   => true,
+            'public_key' => $keypair->publicKey,
+            'mnemonic' => $keypair->mnemonic,
+            'is_active' => true,
         ]);
     }
 }
